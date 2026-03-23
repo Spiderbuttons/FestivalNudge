@@ -1,0 +1,9 @@
+{
+    "Name": "Festival Nudge",
+    "Author": "Spiderbuttons",
+    "Version": "1.0.0",
+    "Description": "Makes space between overcrowded NPCs in highly modded festivals.",
+    "UniqueID": "Spiderbuttons.FestivalNudge",
+    "EntryDll": "FestivalNudge.dll",
+    "UpdateKeys": []
+}
