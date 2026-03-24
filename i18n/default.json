@@ -1,0 +1,7 @@
+﻿{  
+  "Config.NotifyMovements_Name": "Log Movements",
+  "Config.NotifyMovements_Description": "If enabled, any changes to an NPC's position will be logged to your SMAPI console so that you are aware of any position changes.",
+  
+  "Config.SkipWalkingNpcs_Name": "Skip Walking NPCs",
+  "Config.SkipWalkingNpcs_Description": "If enabled, this mod will not alter the positions of NPCs that are set up to walk around the festival. Disabling this may lead to some NPCs behaving or pathfinding weirdly."
+}

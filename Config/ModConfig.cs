@@ -5,7 +5,8 @@ namespace FestivalNudge.Config;
 
 public sealed class ModConfig
 {
-    public bool Enabled { get; set; } = true;
+    public bool NotifyMovements { get; set; } = true;
+    public bool SkipWalkingNpcs { get; set; } = true;
 
     public ModConfig()
     {
@@ -14,7 +15,8 @@ public sealed class ModConfig
 
     private void Init()
     {
-        this.Enabled = true;
+        NotifyMovements = true;
+        SkipWalkingNpcs = true;
     }
 
     public void SetupConfig(IGenericModConfigMenuApi configMenu, IManifest ModManifest, IModHelper Helper)
@@ -27,10 +29,18 @@ public sealed class ModConfig
 
         configMenu.AddBoolOption(
             mod: ModManifest,
-            name: () => "Enabled",
-            tooltip: () => "Enable or disable this mod.",
-            getValue: () => this.Enabled,
-            setValue: value => this.Enabled = value
+            name: i18n.Config_NotifyMovementsName,
+            tooltip: i18n.Config_NotifyMovementsDescription,
+            getValue: () => NotifyMovements,
+            setValue: value => NotifyMovements = value
+        );
+        
+        configMenu.AddBoolOption(
+            mod: ModManifest,
+            name: i18n.Config_SkipWalkingNpcsName,
+            tooltip: i18n.Config_SkipWalkingNpcsDescription,
+            getValue: () => SkipWalkingNpcs,
+            setValue: value => SkipWalkingNpcs = value
         );
     }
 }
