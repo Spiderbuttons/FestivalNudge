@@ -9,6 +9,7 @@ using StardewModdingAPI;
 using StardewModdingAPI.Events;
 using StardewValley;
 using FestivalNudge.Helpers;
+using FestivalNudge.Models;
 using StardewValley.Extensions;
 using StardewValley.Pathfinding;
 using StardewValley.TokenizableStrings;
@@ -20,6 +21,7 @@ namespace FestivalNudge
     {
         internal static IModHelper ModHelper { get; set; } = null!;
         internal static IMonitor ModMonitor { get; set; } = null!;
+        internal static IManifest Manifest { get; set; } = null!;
         internal static ModConfig Config { get; set; } = null!;
         internal static Harmony Harmony { get; set; } = null!;
 
@@ -27,6 +29,7 @@ namespace FestivalNudge
         {
             i18n.Init(helper.Translation);
             ModHelper = helper;
+            Manifest = ModManifest;
             ModMonitor = Monitor;
             Config = helper.ReadConfig<ModConfig>();
             Harmony = new Harmony(ModManifest.UniqueID);
@@ -34,6 +37,8 @@ namespace FestivalNudge
             Harmony.PatchAll();
             
             Helper.Events.GameLoop.GameLaunched += OnGameLaunched;
+            Helper.Events.Content.AssetRequested += OnAssetRequested;
+            Helper.Events.Content.AssetsInvalidated += OnAssetsInvalidated;
             Helper.Events.GameLoop.UpdateTicked += OnUpdateTicked;
         }
 
@@ -43,6 +48,22 @@ namespace FestivalNudge
             if (configMenu != null) Config.SetupConfig(configMenu, ModManifest, Helper);
         }
 
+        private void OnAssetRequested(object? sender, AssetRequestedEventArgs e)
+        {
+            if (e.NameWithoutLocale.IsEquivalentTo($"{Manifest.UniqueID}/NudgeData"))
+            {
+                e.LoadFrom(() => new Dictionary<string, Dictionary<string, List<NpcNudgeData>>>(), AssetLoadPriority.Exclusive);
+            }
+        }
+
+        private void OnAssetsInvalidated(object? sender, AssetsInvalidatedEventArgs e)
+        {
+            if (e.NamesWithoutLocale.Any(asset => asset.IsEquivalentTo($"{Manifest.UniqueID}/NudgeData")))
+            {
+                FestivalManager.NudgeData = null!;
+            }
+        }
+
         private void OnUpdateTicked(object? sender, UpdateTickedEventArgs e)
         {
             if (Game1.CurrentEvent is not { isFestival: true })
@@ -50,6 +71,7 @@ namespace FestivalNudge
                 FestivalManager.TileAccessibility = null;
                 FestivalManager.NpcAccessibility = null;
                 FestivalManager.NudgedNpcs = null;
+                FestivalManager.alreadyManagedFestival = false;
             }
         }
         
@@ -80,6 +102,12 @@ namespace FestivalNudge
     [HarmonyPatch]
     public static class FestivalManager
     {
+        public static Dictionary<string, Dictionary<string, List<NpcNudgeData>>> NudgeData
+        {
+            get => field ??= Game1.content.Load<Dictionary<string, Dictionary<string, List<NpcNudgeData>>>>($"{ModEntry.Manifest.UniqueID}/NudgeData");
+            set;
+        }
+
         public static bool?[,]? TileAccessibility;
         public static bool?[,]? NpcAccessibility;
 
@@ -111,6 +139,8 @@ namespace FestivalNudge
         public static void GlobalFadeToClear_Prefix(Event @event, string[] args, EventContext context)
         {
             if (!Context.IsMainPlayer || !ShouldManageThisFestival) return;
+
+            string festivalId = @event.id.StartsWithIgnoreCase("festival_") && @event.id.Length > 9 ? @event.id[9..] : @event.id;
             
             // Before you ask why I'm doing a bunch of Rounding and Dividing and Int Converting and Point Converting and bla bla bla...
             // I needed the pixel position, so I can't just use their TilePoint, but since pixel positions are floats, I was worried about
@@ -137,8 +167,25 @@ namespace FestivalNudge
                     }
                     
                     Log.Trace($"{actor.Name} overlaps with {string.Join(", ", occupiedTiles[actorPos].Select(npc => npc.Name))} at tile {(actorPos.ToVector2() / 64f).ToPoint()}. Attempting to find a nearby free tile to move them to.");
-                    var neighbours = GetAccessibleNeighbours(actorPos.ToVector2() / 64f);
+
+                    if (NudgeData.TryGetValue(actor.Name, out var nudgeData) && nudgeData.TryGetValue(festivalId, out var festivalData))
+                    {
+                        var newPosition = festivalData.FirstOrDefault(data =>
+                            TileAccessibility![data.Position.X, data.Position.Y] is null or true &&
+                            NpcAccessibility![data.Position.X, data.Position.Y] is null or true &&
+                            (data.Condition is null || GameStateQuery.CheckConditions(data.Condition)));
+                        if (newPosition is not null)
+                        {
+                            Log.Trace($"Moving {actor.Name} based on mod-authored nudge data.");
+                            var newTile = newPosition.Position;
+                            actor.Position = new Vector2(newTile.X, newTile.Y) * 64f;
+                            NpcAccessibility![newTile.X, newTile.Y] = false;
+                            actorPos = new Point((int)Math.Round(actor.Position.X), (int)Math.Round(actor.Position.Y));
+                            goto finish;
+                        }
+                    }
                     
+                    var neighbours = GetAccessibleNeighbours(actorPos.ToVector2() / 64f);
                     if (neighbours.Count > 0)
                     {
                         var newTile = neighbours[Game1.random.Next(neighbours.Count)];
@@ -176,6 +223,7 @@ namespace FestivalNudge
                         }
                     }
                     
+                    finish:
                     occupiedTiles[actorPos] = [actor];
                     NudgedNpcs++;
                     
