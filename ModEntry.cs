@@ -84,8 +84,10 @@ namespace FestivalNudge
         public static bool?[,]? NpcAccessibility;
 
         public static int? NudgedNpcs;
+
+        public static bool alreadyManagedFestival = false;
         
-        private static bool ShouldManageThisFestival => Game1.CurrentEvent is { isFestival: true } && NudgedNpcs is null or > 0;
+        public static bool ShouldManageThisFestival => !alreadyManagedFestival && Game1.CurrentEvent is { isFestival: true } && NudgedNpcs is null or > 0;
         
         [HarmonyPrefix]
         [HarmonyPatch(typeof(Character), nameof(Character.getGeneralDirectionTowards))]
@@ -96,7 +98,14 @@ namespace FestivalNudge
                 useTileCalculations = false;
             }
         }
-        
+
+        [HarmonyPrefix]
+        [HarmonyPatch(typeof(Event.DefaultCommands), nameof(Event.DefaultCommands.PlayerControl))]
+        public static void PlayerControl_Prefix(Event @event, string[] args, EventContext context)
+        {
+            GlobalFadeToClear_Prefix(@event, args, context);
+        }
+
         [HarmonyPrefix]
         [HarmonyPatch(typeof(Event.DefaultCommands), nameof(Event.DefaultCommands.GlobalFadeToClear))]
         public static void GlobalFadeToClear_Prefix(Event @event, string[] args, EventContext context)
@@ -175,6 +184,8 @@ namespace FestivalNudge
                     else Log.Trace(logMsg);
                 }
             }
+
+            alreadyManagedFestival = true;
         }
 
         private static List<Vector2> GetAccessibleNeighbours(Vector2 centerTile, bool includeNpcCheck = true)
