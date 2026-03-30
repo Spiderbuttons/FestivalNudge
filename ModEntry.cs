@@ -164,7 +164,7 @@ namespace FestivalNudge
                             // Neither of these things are insurmountable problems, I'm just lazy.
                             
                             actor.Position += chosenOffset * 64f;
-                            actor.Position += new Vector2(0, -1f); // This is to prevent z-fighting.
+                            actor.Position += new Vector2(0, 1f); // This is to prevent z-fighting.
                             actorPos = new Point((int)Math.Round(actor.Position.X), (int)Math.Round(actor.Position.Y));
                             Log.Trace($"No completely free tiles found for {actor.Name}, but they can scoot a little closer to another NPC instead.");
                         }
