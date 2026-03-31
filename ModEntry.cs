@@ -68,10 +68,7 @@ namespace FestivalNudge
         {
             if (Game1.CurrentEvent is not { isFestival: true })
             {
-                FestivalManager.TileAccessibility = null;
-                FestivalManager.NpcAccessibility = null;
-                FestivalManager.NudgedNpcs = null;
-                FestivalManager.alreadyManagedFestival = false;
+                FestivalManager.ResetFestivalManagement();
             }
         }
         
@@ -113,9 +110,17 @@ namespace FestivalNudge
 
         public static int? NudgedNpcs;
 
-        public static bool alreadyManagedFestival = false;
+        public static bool alreadyManagedFestival;
         
         public static bool ShouldManageThisFestival => !alreadyManagedFestival && Game1.CurrentEvent is { isFestival: true } && NudgedNpcs is null or > 0;
+
+        public static void ResetFestivalManagement()
+        {
+            TileAccessibility = null;
+            NpcAccessibility = null;
+            NudgedNpcs = null;
+            alreadyManagedFestival = false;
+        }
         
         [HarmonyPrefix]
         [HarmonyPatch(typeof(Character), nameof(Character.getGeneralDirectionTowards))]
@@ -126,17 +131,35 @@ namespace FestivalNudge
                 useTileCalculations = false;
             }
         }
+        
+        [HarmonyPostfix]
+        [HarmonyPatch(typeof(Event.DefaultCommands), nameof(Event.DefaultCommands.LoadActors))]
+        public static void LoadActors_Postfix(Event @event, string[] args, EventContext context)
+        {
+            // LoadActors happens in both the festival setup and the "Main Event" of the festival. We'll need to fix our overlaps again in the latter case.
+            if (ArgUtility.TryGet(args, 1, out var layerId, out _, allowBlank: true, "string layerId") &&
+                (layerId.EqualsIgnoreCase("MainEvent") || layerId.EqualsIgnoreCase("Main-Event")))
+            {
+                ResetFestivalManagement();
+                FixOverlaps(@event);
+            }
+        }
 
         [HarmonyPrefix]
         [HarmonyPatch(typeof(Event.DefaultCommands), nameof(Event.DefaultCommands.PlayerControl))]
         public static void PlayerControl_Prefix(Event @event, string[] args, EventContext context)
         {
-            GlobalFadeToClear_Prefix(@event, args, context);
+            FixOverlaps(@event);
         }
 
         [HarmonyPrefix]
         [HarmonyPatch(typeof(Event.DefaultCommands), nameof(Event.DefaultCommands.GlobalFadeToClear))]
         public static void GlobalFadeToClear_Prefix(Event @event, string[] args, EventContext context)
+        {
+            FixOverlaps(@event);
+        }
+
+        private static void FixOverlaps(Event @event)
         {
             if (!Context.IsMainPlayer || !ShouldManageThisFestival) return;
 
@@ -315,6 +338,12 @@ namespace FestivalNudge
 
             foreach (var actor in Game1.CurrentEvent.actors)
             {
+                if (actor.TilePoint.X < 0 || actor.TilePoint.X >= NpcAccessibility.GetLength(0) || actor.TilePoint.Y < 0 || actor.TilePoint.Y >= NpcAccessibility.GetLength(1))
+                {
+                    Log.Trace($"{actor.Name} has an out-of-bounds TilePoint {actor.TilePoint}.");
+                    continue;
+                }
+                
                 NpcAccessibility[actor.TilePoint.X, actor.TilePoint.Y] = false;
                 switch (actor.FacingDirection)
                 {
