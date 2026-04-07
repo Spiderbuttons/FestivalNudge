@@ -191,7 +191,7 @@ namespace FestivalNudge
             }
         }
 
-        public record SerializableNudge(Vector2 StartPos, Vector2 NewPos, int StartFacing, int NewFacing);
+        public record SerializableNudge(Vector2 StartPos, Vector2 NewPos, int StartFacing, int NewFacing); // TODO: Store the festival year!! Important!!
 
         public static Dictionary<string, SerializableNudge>? SavedNudges;
         
@@ -422,6 +422,7 @@ namespace FestivalNudge
                 if (!isMainEvent && SavedNudges!.TryGetValue($"{actor.Name}_{FestivalId}", out var savedNudge))
                 {
                     actor.Position = savedNudge.NewPos;
+                    actor.faceDirection(savedNudge.NewFacing);
                     NpcAccessibility![(int)(savedNudge.NewPos.X / 64f), (int)(savedNudge.NewPos.Y / 64f)] = false;
                     actorPos = new Point((int)Math.Round(actor.Position.X), (int)Math.Round(actor.Position.Y));
 
