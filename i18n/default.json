@@ -1,7 +1,15 @@
-﻿{  
+﻿{
+  "Error.CannotMove": "Cannot move NPCs that are already moving!",
+  
   "Config.NotifyMovements_Name": "Log Movements",
   "Config.NotifyMovements_Description": "If enabled, any changes to an NPC's position will be logged to your SMAPI console so that you are aware of any position changes.",
   
   "Config.SkipWalkingNpcs_Name": "Skip Walking NPCs",
-  "Config.SkipWalkingNpcs_Description": "If enabled, this mod will not alter the positions of NPCs that are set up to walk around the festival. Disabling this may lead to some NPCs behaving or pathfinding weirdly."
+  "Config.SkipWalkingNpcs_Description": "If enabled, this mod will not alter the positions of NPCs that are set up to walk around the festival. Disabling this may lead to some NPCs behaving or pathfinding weirdly.",
+  
+  "Config.MoveNpcKey_Name": "Pick Up NPC",
+  "Config.MoveNpcKey_Description": "The hotkey you must press in order to begin manually moving an NPC.",
+  
+  "Config.PrecisionModKey_Name": "Precision Modifier",
+  "Config.PrecisionModKey_Description": "When held while manually moving an NPC, you can precisely position them instead of having them snap to the world grid.",
 }

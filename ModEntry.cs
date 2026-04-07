@@ -1,5 +1,6 @@
 ﻿using System;
 using System.Collections.Generic;
+using System.IO;
 using System.Linq;
 using GenericModConfigMenu;
 using HarmonyLib;
@@ -10,6 +11,7 @@ using StardewModdingAPI.Events;
 using StardewValley;
 using FestivalNudge.Helpers;
 using FestivalNudge.Models;
+using Microsoft.Xna.Framework.Graphics;
 using StardewValley.Extensions;
 using StardewValley.Pathfinding;
 using StardewValley.TokenizableStrings;
@@ -40,6 +42,11 @@ namespace FestivalNudge
             Helper.Events.Content.AssetRequested += OnAssetRequested;
             Helper.Events.Content.AssetsInvalidated += OnAssetsInvalidated;
             Helper.Events.GameLoop.UpdateTicked += OnUpdateTicked;
+            
+            Helper.Events.Input.ButtonsChanged += FestivalManager.OnButtonsChanged;
+            Helper.Events.Input.MouseWheelScrolled += FestivalManager.OnMouseWheelScrolled;
+            Helper.Events.GameLoop.UpdateTicked += FestivalManager.OnUpdateTicked;
+            Helper.Events.Display.RenderedWorld += FestivalManager.OnRenderedWorld;
         }
 
         private void OnGameLaunched(object? sender, GameLaunchedEventArgs e)
@@ -54,6 +61,11 @@ namespace FestivalNudge
             {
                 e.LoadFrom(() => new Dictionary<string, Dictionary<string, List<NpcNudgeData>>>(), AssetLoadPriority.Exclusive);
             }
+
+            if (e.NameWithoutLocale.IsEquivalentTo($"{Manifest.UniqueID}/NudgeCursor"))
+            {
+                e.LoadFromModFile<Texture2D>(Path.Combine("assets", "cursor.png"), AssetLoadPriority.Medium);
+            }
         }
 
         private void OnAssetsInvalidated(object? sender, AssetsInvalidatedEventArgs e)
@@ -61,6 +73,11 @@ namespace FestivalNudge
             if (e.NamesWithoutLocale.Any(asset => asset.IsEquivalentTo($"{Manifest.UniqueID}/NudgeData")))
             {
                 FestivalManager.NudgeData = null!;
+            }
+            
+            if (e.NamesWithoutLocale.Any(asset => asset.IsEquivalentTo($"{Manifest.UniqueID}/NudgeCursor")))
+            {
+                FestivalManager.NudgeCursor = null!;
             }
         }
 
@@ -99,9 +116,80 @@ namespace FestivalNudge
     [HarmonyPatch]
     public static class FestivalManager
     {
+        public class ManualNudge(NPC npc, Vector2 startingPos, int startingFacingDir)
+        {
+            public NPC Npc = npc;
+            public Vector2 NewPos = startingPos;
+            public int NewFacingDir = startingFacingDir;
+
+            public bool isPrecise;
+            public bool isValidTile = true;
+
+            private readonly AnimatedSprite NpcSprite = npc.Sprite.Clone();
+
+            public void Update()
+            {
+                NewPos = Game1.getMousePosition().ToVector2() + new Vector2(Game1.viewport.X, Game1.viewport.Y) - new Vector2(32, 32);
+                NpcSprite.faceDirection(NewFacingDir);
+                if (Npc.Sprite.CurrentAnimation is { } list && list.Any()) NpcSprite.CurrentFrame = Npc.Sprite.CurrentFrame;
+                NPC? npc = Game1.currentLocation?.isCharacterAtTile(GetFinalPosition(forceTile: true));
+                isValidTile = npc == null || npc == Npc;
+            }
+
+            public Vector2 GetFinalPosition(bool forceTile = false)
+            {
+                if (isPrecise && !forceTile) return NewPos;
+                return new Vector2((int)Math.Round(NewPos.X / 64f), (int)Math.Round(NewPos.Y / 64f)) * 64f;
+            }
+
+            public void Draw(SpriteBatch b)
+            {
+                DrawPlacementTile(b);
+                DrawNpc(b);
+            }
+
+            private void DrawPlacementTile(SpriteBatch b)
+            {
+                b.Draw(
+                    texture: Game1.mouseCursors,
+                    position: Game1.GlobalToLocal(Game1.viewport, GetFinalPosition()),
+                    sourceRectangle: new Rectangle(isValidTile ? 194 : 210, 388, 16, 16),
+                    color: Color.White,
+                    rotation: 0f,
+                    origin: Vector2.Zero,
+                    scale: 4f,
+                    effects: SpriteEffects.None,
+                    layerDepth: 0.01f
+                );
+            }
+
+            private void DrawNpc(SpriteBatch b)
+            {
+                b.Draw(
+                    texture: NpcSprite.Texture,
+                    position: Game1.GlobalToLocal(Game1.viewport, GetFinalPosition()),
+                    sourceRectangle: NpcSprite.SourceRect,
+                    color: Color.White * 0.5f,
+                    rotation: Npc.rotation,
+                    origin: new Vector2(0f, NpcSprite.SpriteHeight * 2.5f / 4f),
+                    scale: Math.Max(0.2f, Npc.Scale) * 4f,
+                    effects: Npc.flip || (NpcSprite.CurrentAnimation != null && NpcSprite.CurrentAnimation[NpcSprite.currentAnimationIndex].flip)
+                        ? SpriteEffects.FlipHorizontally
+                        : SpriteEffects.None,
+                    layerDepth: 0.02f
+                );
+            }
+        }
+        
         public static Dictionary<string, Dictionary<string, List<NpcNudgeData>>> NudgeData
         {
             get => field ??= Game1.content.Load<Dictionary<string, Dictionary<string, List<NpcNudgeData>>>>($"{ModEntry.Manifest.UniqueID}/NudgeData");
+            set;
+        }
+
+        public static Texture2D? NudgeCursor
+        {
+            get => field ??= Game1.content.Load<Texture2D>($"{ModEntry.Manifest.UniqueID}/NudgeCursor");
             set;
         }
 
@@ -114,12 +202,118 @@ namespace FestivalNudge
         
         public static bool ShouldManageThisFestival => !alreadyManagedFestival && Game1.CurrentEvent is { isFestival: true } && NudgedNpcs is null or > 0;
 
+        public static ManualNudge? ManuallyNudgedNpc;
+
         public static void ResetFestivalManagement()
         {
             TileAccessibility = null;
             NpcAccessibility = null;
             NudgedNpcs = null;
             alreadyManagedFestival = false;
+            ManuallyNudgedNpc = null;
+        }
+
+        public static void OnButtonsChanged(object? sender, ButtonsChangedEventArgs e)
+        {
+            if (Game1.CurrentEvent is not { isFestival: true }) return;
+            
+            if (ModEntry.Config.MoveNpcKey.GetKeybindCurrentlyDown() is { } bind && bind.GetState() == SButtonState.Pressed)
+            {
+                NPC? npc = Game1.currentLocation.isCharacterAtTile(e.Cursor.Tile) ??
+                           Game1.currentLocation.isCharacterAtTile(e.Cursor.Tile + new Vector2(0, 1));
+                if (ManuallyNudgedNpc is null && npc is not null)
+                {
+                    if (Game1.CurrentEvent.npcControllers.All(c => c.puppet != npc))
+                    {
+                        ManuallyNudgedNpc = new ManualNudge(npc, npc.Position, npc.FacingDirection);
+                        Game1.playSound("button_tap");
+                    }
+                    else
+                    {
+                        Game1.addHUDMessage(new HUDMessage(i18n.Error_CannotMove(), HUDMessage.error_type));
+                        Game1.playSound("cancel");
+                    }
+                    return;
+                }
+            }
+            
+            if (ManuallyNudgedNpc is null) return;
+
+            ManuallyNudgedNpc.isPrecise = ModEntry.Config.PrecisionModKey.IsDown();
+
+            if (e.Pressed.Contains(SButton.MouseLeft))
+            {
+                SuppressNudgeKeybinds();
+                if (!ManuallyNudgedNpc.isValidTile) return;
+
+                ManuallyNudgedNpc.Npc.Position = ManuallyNudgedNpc.GetFinalPosition();
+                ManuallyNudgedNpc.Npc.faceDirection(ManuallyNudgedNpc.NewFacingDir);
+                ManuallyNudgedNpc = null;
+                Game1.playSound("coin");
+            } else if (e.Pressed.Contains(SButton.MouseRight))
+            {
+                SuppressNudgeKeybinds();
+                ManuallyNudgedNpc = null;
+                Game1.playSound("breathout");
+            }
+        }
+
+        private static void SuppressNudgeKeybinds()
+        {
+            foreach (var button in ModEntry.Config.MoveNpcKey.GetKeybindCurrentlyDown()?.Buttons ?? [])
+            {
+                ModEntry.ModHelper.Input.Suppress(button);
+            }
+            ModEntry.ModHelper.Input.Suppress(SButton.MouseLeft);
+            ModEntry.ModHelper.Input.Suppress(SButton.MouseRight);
+        }
+
+        public static void OnMouseWheelScrolled(object? sender, MouseWheelScrolledEventArgs e)
+        {
+            if (ManuallyNudgedNpc is null) return;
+            ManuallyNudgedNpc.NewFacingDir = e.Delta switch
+            {
+                > 0 => (ManuallyNudgedNpc.NewFacingDir + 3) % 4,
+                < 0 => (ManuallyNudgedNpc.NewFacingDir + 1) % 4,
+                _ => ManuallyNudgedNpc.NewFacingDir
+            };
+            Game1.playSound("shwip");
+        }
+
+        public static void OnUpdateTicked(object? sender, UpdateTickedEventArgs e)
+        {
+            ManuallyNudgedNpc?.Update();
+        }
+
+        public static void OnRenderedWorld(object? sender, RenderedWorldEventArgs e)
+        {
+            ManuallyNudgedNpc?.Draw(e.SpriteBatch);
+        }
+
+        [HarmonyPrefix]
+        [HarmonyPatch(typeof(Game1), nameof(Game1.drawMouseCursor))]
+        public static void drawMouseCursor_Prefix()
+        {
+            if (ManuallyNudgedNpc == null) return;
+            
+            Game1.mouseCursorTransparency = 0f;
+            Game1.spriteBatch.Draw(
+                texture: NudgeCursor,
+                position: new Vector2(Game1.getMouseX(), Game1.getMouseY()),
+                sourceRectangle: new Rectangle(0,0,12,16),
+                color: Color.White,
+                rotation: 0f,
+                origin: Vector2.Zero,
+                scale: 3f,// + Game1.dialogueButtonScale / 150f,
+                effects: SpriteEffects.None,
+                layerDepth: 1f);
+        }
+
+        [HarmonyPrefix]
+        [HarmonyPatch(typeof(NPC), nameof(NPC.draw), typeof(SpriteBatch), typeof(float))]
+        public static void draw_Prefix(NPC __instance, ref float alpha)
+        {
+            //if (ManuallyNudgedNpc?.Npc == __instance) alpha /= 2f;
         }
         
         [HarmonyPrefix]
