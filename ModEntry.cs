@@ -39,6 +39,7 @@ namespace FestivalNudge
             Harmony.PatchAll();
             
             Helper.Events.GameLoop.GameLaunched += OnGameLaunched;
+            Helper.Events.GameLoop.SaveLoaded += OnSaveLoaded;
             Helper.Events.Content.AssetRequested += OnAssetRequested;
             Helper.Events.Content.AssetsInvalidated += OnAssetsInvalidated;
             Helper.Events.GameLoop.UpdateTicked += OnUpdateTicked;
@@ -53,6 +54,11 @@ namespace FestivalNudge
         {
             var configMenu = Helper.ModRegistry.GetApi<IGenericModConfigMenuApi>("spacechase0.GenericModConfigMenu");
             if (configMenu != null) Config.SetupConfig(configMenu, ModManifest, Helper);
+        }
+
+        private void OnSaveLoaded(object? sender, SaveLoadedEventArgs e)
+        {
+            FestivalManager.SavedNudges = Helper.Data.ReadSaveData<Dictionary<string, FestivalManager.SerializableNudge>>("manual-nudges") ?? new Dictionary<string, FestivalManager.SerializableNudge>();
         }
 
         private void OnAssetRequested(object? sender, AssetRequestedEventArgs e)
@@ -119,6 +125,10 @@ namespace FestivalNudge
         public class ManualNudge(NPC npc, Vector2 startingPos, int startingFacingDir)
         {
             public NPC Npc = npc;
+            
+            public Vector2 StartPos = startingPos;
+            public int StartFacingDir = startingFacingDir;
+            
             public Vector2 NewPos = startingPos;
             public int NewFacingDir = startingFacingDir;
 
@@ -180,6 +190,10 @@ namespace FestivalNudge
                 );
             }
         }
+
+        public record SerializableNudge(Vector2 StartPos, Vector2 NewPos, int StartFacing, int NewFacing);
+
+        public static Dictionary<string, SerializableNudge>? SavedNudges;
         
         public static Dictionary<string, Dictionary<string, List<NpcNudgeData>>> NudgeData
         {
@@ -201,6 +215,7 @@ namespace FestivalNudge
         public static bool alreadyManagedFestival;
         
         public static bool ShouldManageThisFestival => !alreadyManagedFestival && Game1.CurrentEvent is { isFestival: true } && NudgedNpcs is null or > 0;
+        public static string FestivalId => (Game1.CurrentEvent?.id ?? "").StartsWithIgnoreCase("festival_") && (Game1.CurrentEvent?.id ?? "").Length > 9 ? (Game1.CurrentEvent?.id ?? "")[9..] : Game1.CurrentEvent?.id ?? "";
 
         public static ManualNudge? ManuallyNudgedNpc;
 
@@ -211,6 +226,36 @@ namespace FestivalNudge
             NudgedNpcs = null;
             alreadyManagedFestival = false;
             ManuallyNudgedNpc = null;
+        }
+
+        public static void SaveManualNudge(ManualNudge nudge, string festivalId)
+        {
+            SerializableNudge savedNudge = new SerializableNudge(nudge.StartPos, nudge.NewPos, nudge.StartFacingDir, nudge.NewFacingDir);
+            SavedNudges![$"{nudge.Npc.Name}_{festivalId}"] = savedNudge;
+            ModEntry.ModHelper.Data.WriteSaveData("manual-nudges", SavedNudges);
+        }
+
+        public static void ResetManualNudge(NPC npc, string festivalId)
+        {
+            if (!SavedNudges!.ContainsKey(festivalId)) return;
+            
+            if (SavedNudges.TryGetValue($"{npc.Name}_{festivalId}", out var savedNudge))
+            {
+                npc.Position = savedNudge.StartPos;
+                npc.faceDirection(savedNudge.StartFacing);
+                SavedNudges.Remove($"{npc.Name}_{festivalId}");
+            }
+            ModEntry.ModHelper.Data.WriteSaveData("manual-nudges", SavedNudges);
+        }
+
+        public static void ResetAllNudgesInCurrentFestival()
+        {
+            if (Game1.CurrentEvent is not { isFestival: true }) return;
+            
+            foreach (var actor in Game1.CurrentEvent.actors)
+            {
+                ResetManualNudge(actor, FestivalId);
+            }
         }
 
         public static void OnButtonsChanged(object? sender, ButtonsChangedEventArgs e)
@@ -248,6 +293,7 @@ namespace FestivalNudge
 
                 ManuallyNudgedNpc.Npc.Position = ManuallyNudgedNpc.GetFinalPosition();
                 ManuallyNudgedNpc.Npc.faceDirection(ManuallyNudgedNpc.NewFacingDir);
+                SaveManualNudge(ManuallyNudgedNpc, FestivalId);
                 ManuallyNudgedNpc = null;
                 Game1.playSound("coin");
             } else if (e.Pressed.Contains(SButton.MouseRight))
@@ -335,7 +381,7 @@ namespace FestivalNudge
                 (layerId.EqualsIgnoreCase("MainEvent") || layerId.EqualsIgnoreCase("Main-Event")))
             {
                 ResetFestivalManagement();
-                FixOverlaps(@event);
+                FixOverlaps(@event, isMainEvent: true);
             }
         }
 
@@ -353,11 +399,9 @@ namespace FestivalNudge
             FixOverlaps(@event);
         }
 
-        private static void FixOverlaps(Event @event)
+        private static void FixOverlaps(Event @event, bool isMainEvent = false)
         {
             if (!Context.IsMainPlayer || !ShouldManageThisFestival) return;
-
-            string festivalId = @event.id.StartsWithIgnoreCase("festival_") && @event.id.Length > 9 ? @event.id[9..] : @event.id;
             
             // Before you ask why I'm doing a bunch of Rounding and Dividing and Int Converting and Point Converting and bla bla bla...
             // I needed the pixel position, so I can't just use their TilePoint, but since pixel positions are floats, I was worried about
@@ -374,6 +418,27 @@ namespace FestivalNudge
             foreach (var actor in @event.actors)
             {
                 Point actorPos = new Point((int)Math.Round(actor.Position.X), (int)Math.Round(actor.Position.Y));
+                
+                if (!isMainEvent && SavedNudges!.TryGetValue($"{actor.Name}_{FestivalId}", out var savedNudge))
+                {
+                    actor.Position = savedNudge.NewPos;
+                    NpcAccessibility![(int)(savedNudge.NewPos.X / 64f), (int)(savedNudge.NewPos.Y / 64f)] = false;
+                    actorPos = new Point((int)Math.Round(actor.Position.X), (int)Math.Round(actor.Position.Y));
+
+                    if (!occupiedTiles.TryGetValue(actorPos, out _))
+                    {
+                        occupiedTiles[actorPos] = [];
+                    }
+                    occupiedTiles[actorPos].Add(actor);
+                    NudgedNpcs++;
+                    
+                    string logMsg = $"Loaded manual nudge data to move {TokenParser.ParseText(actor.GetTokenizedDisplayName())} to tile {(actor.Position / 64f).ToPoint()}.";
+                    if (ModEntry.Config.NotifyMovements) Log.Info(logMsg);
+                    else Log.Trace(logMsg);
+                    
+                    continue;
+                }
+                
                 if (!occupiedTiles.TryAdd(actorPos, [actor]))
                 {
                     var originalPos = actorPos;
@@ -385,7 +450,7 @@ namespace FestivalNudge
                     
                     Log.Trace($"{actor.Name} overlaps with {string.Join(", ", occupiedTiles[actorPos].Select(npc => npc.Name))} at tile {(actorPos.ToVector2() / 64f).ToPoint()}. Attempting to find a nearby free tile to move them to.");
 
-                    if (NudgeData.TryGetValue(actor.Name, out var nudgeData) && nudgeData.TryGetValue(festivalId, out var festivalData))
+                    if (NudgeData.TryGetValue(actor.Name, out var nudgeData) && nudgeData.TryGetValue(FestivalId, out var festivalData))
                     {
                         var newPosition = festivalData.FirstOrDefault(data =>
                             TileAccessibility![data.Position.X, data.Position.Y] is null or true &&
