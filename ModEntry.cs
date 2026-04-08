@@ -228,22 +228,37 @@ namespace FestivalNudge
             ManuallyNudgedNpc = null;
         }
 
+        public static string GetNudgeKeyForNpc(string npc, string festivalId, int year)
+        {
+            if (Game1.CurrentEvent is not { isFestival: true } @event || !@event.TryGetFestivalDataForYear($"set-up", out _, out string actualKey))
+            {
+                // This should never happen anyway.
+                return npc;
+            }
+            
+            return $"{npc}_{festivalId}_{actualKey}";
+        }
+
         public static void SaveManualNudge(ManualNudge nudge, string festivalId)
         {
-            SerializableNudge savedNudge = new SerializableNudge(nudge.StartPos, nudge.NewPos, nudge.StartFacingDir, nudge.NewFacingDir);
-            SavedNudges![$"{nudge.Npc.Name}_{festivalId}"] = savedNudge;
+            string nudgeKey = GetNudgeKeyForNpc(nudge.Npc.Name, festivalId, Game1.year);
+            Vector2 startPos = SavedNudges!.GetValueOrDefault(nudgeKey)?.StartPos ?? nudge.StartPos;
+            int startFacing = SavedNudges!.GetValueOrDefault(nudgeKey)?.StartFacing ?? nudge.StartFacingDir;
+            SerializableNudge savedNudge = new SerializableNudge(startPos, nudge.NewPos, startFacing, nudge.NewFacingDir, nudge.isPrecise);
+            SavedNudges![nudgeKey] = savedNudge;
             ModEntry.ModHelper.Data.WriteSaveData("manual-nudges", SavedNudges);
         }
 
         public static void ResetManualNudge(NPC npc, string festivalId)
         {
             if (!SavedNudges!.ContainsKey(festivalId)) return;
-            
-            if (SavedNudges.TryGetValue($"{npc.Name}_{festivalId}", out var savedNudge))
+
+            string nudgeKey = GetNudgeKeyForNpc(npc.Name, festivalId, Game1.year);
+            if (SavedNudges.TryGetValue(nudgeKey, out var savedNudge))
             {
                 npc.Position = savedNudge.StartPos;
                 npc.faceDirection(savedNudge.StartFacing);
-                SavedNudges.Remove($"{npc.Name}_{festivalId}");
+                SavedNudges.Remove(nudgeKey);
             }
             ModEntry.ModHelper.Data.WriteSaveData("manual-nudges", SavedNudges);
         }
@@ -419,7 +434,8 @@ namespace FestivalNudge
             {
                 Point actorPos = new Point((int)Math.Round(actor.Position.X), (int)Math.Round(actor.Position.Y));
                 
-                if (!isMainEvent && SavedNudges!.TryGetValue($"{actor.Name}_{FestivalId}", out var savedNudge))
+                string nudgeKey = GetNudgeKeyForNpc(actor.Name, FestivalId, Game1.year);
+                if (!isMainEvent && SavedNudges!.TryGetValue(nudgeKey, out var savedNudge))
                 {
                     actor.Position = savedNudge.NewPos;
                     actor.faceDirection(savedNudge.NewFacing);
