@@ -191,7 +191,7 @@ namespace FestivalNudge
             }
         }
 
-        public record SerializableNudge(Vector2 StartPos, Vector2 NewPos, int StartFacing, int NewFacing); // TODO: Store the festival year!! Important!!
+        public record SerializableNudge(Vector2 StartPos, Vector2 NewPos, int StartFacing, int NewFacing, bool Precise);
 
         public static Dictionary<string, SerializableNudge>? SavedNudges;
         
@@ -414,14 +414,22 @@ namespace FestivalNudge
             FixOverlaps(@event);
         }
 
-        private static void FixOverlaps(Event @event, bool isMainEvent = false)
+        private static Point PositionToPoint(Vector2 pos)
         {
-            if (!Context.IsMainPlayer || !ShouldManageThisFestival) return;
-            
             // Before you ask why I'm doing a bunch of Rounding and Dividing and Int Converting and Point Converting and bla bla bla...
             // I needed the pixel position, so I can't just use their TilePoint, but since pixel positions are floats, I was worried about
             // floating point math bugs. So all the stuff I'm doing is to try and ensure that every Vector2 position I use is correctly
             // compared to other floating points when necessary, since I'm using them as Dictionary keys.
+            decimal xPos = (decimal)pos.X;
+            decimal yPos = (decimal)pos.Y;
+            int xTile = (int)Math.Round(xPos / 64m);
+            int yTile = (int)Math.Round(yPos / 64m);
+            return new Point(xTile, yTile);
+        }
+
+        private static void FixOverlaps(Event @event, bool isMainEvent = false)
+        {
+            if (!Context.IsMainPlayer || !ShouldManageThisFestival) return;
             
             TileAccessibility = null;
             NpcAccessibility = null;
@@ -432,15 +440,15 @@ namespace FestivalNudge
             Dictionary<Point, List<NPC>> occupiedTiles = new Dictionary<Point, List<NPC>>();
             foreach (var actor in @event.actors)
             {
-                Point actorPos = new Point((int)Math.Round(actor.Position.X), (int)Math.Round(actor.Position.Y));
+                Point actorPos = PositionToPoint(actor.Position);
                 
                 string nudgeKey = GetNudgeKeyForNpc(actor.Name, FestivalId, Game1.year);
                 if (!isMainEvent && SavedNudges!.TryGetValue(nudgeKey, out var savedNudge))
                 {
-                    actor.Position = savedNudge.NewPos;
+                    actor.Position = savedNudge.Precise ? savedNudge.NewPos : PositionToPoint(savedNudge.NewPos).ToVector2() * 64f;
                     actor.faceDirection(savedNudge.NewFacing);
-                    NpcAccessibility![(int)(savedNudge.NewPos.X / 64f), (int)(savedNudge.NewPos.Y / 64f)] = false;
-                    actorPos = new Point((int)Math.Round(actor.Position.X), (int)Math.Round(actor.Position.Y));
+                    NpcAccessibility![PositionToPoint(savedNudge.NewPos).X, PositionToPoint(savedNudge.NewPos).Y] = false;
+                    actorPos = PositionToPoint(actor.Position);
 
                     if (!occupiedTiles.TryGetValue(actorPos, out _))
                     {
@@ -449,7 +457,7 @@ namespace FestivalNudge
                     occupiedTiles[actorPos].Add(actor);
                     NudgedNpcs++;
                     
-                    string logMsg = $"Loaded manual nudge data to move {TokenParser.ParseText(actor.GetTokenizedDisplayName())} to tile {(actor.Position / 64f).ToPoint()}.";
+                    string logMsg = $"Loaded manual nudge data to move {TokenParser.ParseText(actor.GetTokenizedDisplayName())} to tile {PositionToPoint(actor.Position)}.";
                     if (ModEntry.Config.NotifyMovements) Log.Info(logMsg);
                     else Log.Trace(logMsg);
                     
@@ -461,11 +469,11 @@ namespace FestivalNudge
                     var originalPos = actorPos;
                     if (ModEntry.Config.SkipWalkingNpcs && movingNpcs.Contains(actor.Name))
                     {
-                        Log.Trace($"{actor.Name} overlaps with {string.Join(", ", occupiedTiles[actorPos].Select(npc => npc.Name))} at tile {(actorPos.ToVector2() / 64f).ToPoint()}, but they're set up to move, so position adjustment will be skipped to be better safe than sorry.");
+                        Log.Trace($"{actor.Name} overlaps with {string.Join(", ", occupiedTiles[actorPos].Select(npc => npc.Name))} at tile {PositionToPoint(actor.Position)}, but they're set up to move, so position adjustment will be skipped to be better safe than sorry.");
                         continue;
                     }
                     
-                    Log.Trace($"{actor.Name} overlaps with {string.Join(", ", occupiedTiles[actorPos].Select(npc => npc.Name))} at tile {(actorPos.ToVector2() / 64f).ToPoint()}. Attempting to find a nearby free tile to move them to.");
+                    Log.Trace($"{actor.Name} overlaps with {string.Join(", ", occupiedTiles[actorPos].Select(npc => npc.Name))} at tile {PositionToPoint(actor.Position)}. Attempting to find a nearby free tile to move them to.");
 
                     if (NudgeData.TryGetValue(actor.Name, out var nudgeData) && nudgeData.TryGetValue(FestivalId, out var festivalData))
                     {
@@ -479,25 +487,25 @@ namespace FestivalNudge
                             var newTile = newPosition.Position;
                             actor.Position = new Vector2(newTile.X, newTile.Y) * 64f;
                             NpcAccessibility![newTile.X, newTile.Y] = false;
-                            actorPos = new Point((int)Math.Round(actor.Position.X), (int)Math.Round(actor.Position.Y));
+                            actorPos = PositionToPoint(actor.Position);
                             goto finish;
                         }
                     }
                     
-                    var neighbours = GetAccessibleNeighbours(actorPos.ToVector2() / 64f);
+                    var neighbours = GetAccessibleNeighbours(PositionToPoint(actor.Position).ToVector2());
                     if (neighbours.Count > 0)
                     {
                         var newTile = neighbours[Game1.random.Next(neighbours.Count)];
                         actor.Position = newTile * 64f;
                         NpcAccessibility?[(int)newTile.X, (int)newTile.Y] = false;
-                        actorPos = new Point((int)Math.Round(actor.Position.X), (int)Math.Round(actor.Position.Y));
+                        actorPos = PositionToPoint(actor.Position);
                     }
                     else
                     {
-                        var neighboursWithNpcs = GetAccessibleNeighbours(actorPos.ToVector2() / 64f, includeNpcCheck: false);
+                        var neighboursWithNpcs = GetAccessibleNeighbours(PositionToPoint(actor.Position).ToVector2(), includeNpcCheck: false);
                         if (neighboursWithNpcs.Count > 0)
                         {
-                            var offsets = GetOffsetsFromTile(actorPos.ToVector2() / 64f, neighboursWithNpcs).ToList();
+                            var offsets = GetOffsetsFromTile(PositionToPoint(actor.Position).ToVector2(), neighboursWithNpcs).ToList();
                             var chosenOffset = offsets[Game1.random.Next(offsets.Count)] / 2f; // We only wanna nudge em by half a tile.
                             
                             if (ModEntry.NearlyEqual(0, chosenOffset.X, 0.0001f))
@@ -511,7 +519,7 @@ namespace FestivalNudge
                             
                             actor.Position += chosenOffset * 64f;
                             actor.Position += new Vector2(0, 1f); // This is to prevent z-fighting.
-                            actorPos = new Point((int)Math.Round(actor.Position.X), (int)Math.Round(actor.Position.Y));
+                            actorPos = PositionToPoint(actor.Position);
                             Log.Trace($"No completely free tiles found for {actor.Name}, but they can scoot a little closer to another NPC instead.");
                         }
                         else
@@ -526,7 +534,7 @@ namespace FestivalNudge
                     occupiedTiles[actorPos] = [actor];
                     NudgedNpcs++;
                     
-                    string logMsg = $"Moved {TokenParser.ParseText(actor.GetTokenizedDisplayName())} to tile {(actor.Position / 64f).ToPoint()} to prevent overlap with {string.Join(", ", occupiedTiles[originalPos].Select(npc => TokenParser.ParseText(npc.GetTokenizedDisplayName())))}.";
+                    string logMsg = $"Moved {TokenParser.ParseText(actor.GetTokenizedDisplayName())} to tile {PositionToPoint(actor.Position)} to prevent overlap with {string.Join(", ", occupiedTiles[originalPos].Select(npc => TokenParser.ParseText(npc.GetTokenizedDisplayName())))}.";
                     if (ModEntry.Config.NotifyMovements) Log.Info(logMsg);
                     else Log.Trace(logMsg);
                 }
