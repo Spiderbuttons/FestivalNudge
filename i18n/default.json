@@ -12,4 +12,10 @@
   
   "Config.PrecisionModKey_Name": "Precision Modifier",
   "Config.PrecisionModKey_Description": "When held while manually moving an NPC, you can precisely position them instead of having them snap to the world grid.",
+  
+  "Config.ResetNudgeKey_Name": "Reset Nudges",
+  "Config.ResetNudgeKey_Description": "When pressed, this will reset all manually nudged NPCs back to their original positions. If you are currently holding an NPC, it will only reset that specific NPC.",
+  
+  "Config.ResetAllNudgesKey_Name": "Reset All Modifier",
+  "Config.ResetAllNudgesKey_Description": "When held while pressing the Reset Nudges keybind, it will reset ALL NPCs back to their original positions, even if they were not manually moved by you.",
 }

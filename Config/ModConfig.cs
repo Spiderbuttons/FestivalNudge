@@ -8,8 +8,11 @@ public sealed class ModConfig
 {
     public bool NotifyMovements { get; set; } = true;
     public bool SkipWalkingNpcs { get; set; } = true;
-    public KeybindList MoveNpcKey { get; set; } = KeybindList.Parse("LeftControl");
-    public KeybindList PrecisionModKey { get; set; } = KeybindList.Parse("LeftShift");
+    public KeybindList MoveNpcKey { get; set; } = new(SButton.LeftControl);
+    public KeybindList PrecisionModKey { get; set; } = new(SButton.LeftShift);
+
+    public KeybindList ResetNudgeKey { get; set; } = new(SButton.None);
+    public KeybindList ResetAllNudgesKey { get; set; }  = new(SButton.None);
 
     public ModConfig()
     {
@@ -60,6 +63,22 @@ public sealed class ModConfig
             tooltip: i18n.Config_PrecisionModKeyDescription,
             getValue: () => PrecisionModKey,
             setValue: value => PrecisionModKey = value
+        );
+        
+        configMenu.AddKeybindList(
+            mod: ModManifest,
+            name: i18n.Config_ResetNudgeKeyName,
+            tooltip: i18n.Config_ResetNudgeKeyDescription,
+            getValue: () => ResetNudgeKey,
+            setValue: value => ResetNudgeKey = value
+        );
+        
+        configMenu.AddKeybindList(
+            mod: ModManifest,
+            name: i18n.Config_ResetAllNudgesKeyName,
+            tooltip: i18n.Config_ResetAllNudgesKeyDescription,
+            getValue: () => ResetAllNudgesKey,
+            setValue: value => ResetAllNudgesKey = value
         );
     }
 }

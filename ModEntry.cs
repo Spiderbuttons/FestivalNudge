@@ -194,6 +194,7 @@ namespace FestivalNudge
         public record SerializableNudge(Vector2 StartPos, Vector2 NewPos, int StartFacing, int NewFacing, bool Precise);
 
         public static Dictionary<string, SerializableNudge>? SavedNudges;
+        public static Dictionary<string, SerializableNudge>? AutomaticNudges;
         
         public static Dictionary<string, Dictionary<string, List<NpcNudgeData>>> NudgeData
         {
@@ -249,27 +250,28 @@ namespace FestivalNudge
             ModEntry.ModHelper.Data.WriteSaveData("manual-nudges", SavedNudges);
         }
 
-        public static void ResetManualNudge(NPC npc, string festivalId)
+        public static void ResetNudge(NPC npc, string festivalId, bool isManual = true)
         {
-            if (!SavedNudges!.ContainsKey(festivalId)) return;
-
+            Dictionary<string, SerializableNudge>? nudgeDict = isManual ? SavedNudges : AutomaticNudges;
+            
             string nudgeKey = GetNudgeKeyForNpc(npc.Name, festivalId, Game1.year);
-            if (SavedNudges.TryGetValue(nudgeKey, out var savedNudge))
-            {
-                npc.Position = savedNudge.StartPos;
-                npc.faceDirection(savedNudge.StartFacing);
-                SavedNudges.Remove(nudgeKey);
-            }
-            ModEntry.ModHelper.Data.WriteSaveData("manual-nudges", SavedNudges);
+            if (nudgeDict is null || !nudgeDict.TryGetValue(nudgeKey, out var nudge)) return;
+            
+            npc.Position = nudge.StartPos;
+            npc.faceDirection(nudge.StartFacing);
+            nudgeDict.Remove(nudgeKey);
+            
+            if (isManual) ModEntry.ModHelper.Data.WriteSaveData("manual-nudges", SavedNudges);
         }
 
-        public static void ResetAllNudgesInCurrentFestival()
+        public static void ResetAllNudgesInCurrentFestival(bool includeAutomaticNudges = false)
         {
             if (Game1.CurrentEvent is not { isFestival: true }) return;
             
             foreach (var actor in Game1.CurrentEvent.actors)
             {
-                ResetManualNudge(actor, FestivalId);
+                ResetNudge(actor, FestivalId, isManual: true);
+                if (includeAutomaticNudges) ResetNudge(actor, FestivalId, isManual: false);
             }
         }
 
@@ -295,6 +297,16 @@ namespace FestivalNudge
                     }
                     return;
                 }
+            }
+
+            if (ModEntry.Config.ResetNudgeKey.JustPressed())
+            {
+                bool withMod = ManuallyNudgedNpc is null && ModEntry.Config.ResetAllNudgesKey.IsDown();
+                if (ManuallyNudgedNpc is not null)
+                {
+                    ResetNudge(ManuallyNudgedNpc.Npc, FestivalId);
+                    ManuallyNudgedNpc = null;
+                } else ResetAllNudgesInCurrentFestival(withMod);
             }
             
             if (ManuallyNudgedNpc is null) return;
@@ -532,6 +544,8 @@ namespace FestivalNudge
                     
                     finish:
                     occupiedTiles[actorPos] = [actor];
+                    AutomaticNudges ??= new Dictionary<string, SerializableNudge>();
+                    AutomaticNudges[GetNudgeKeyForNpc(actor.Name, FestivalId, Game1.year)] = new SerializableNudge(originalPos.ToVector2() * 64f, actor.Position, actor.FacingDirection, actor.FacingDirection, false);
                     NudgedNpcs++;
                     
                     string logMsg = $"Moved {TokenParser.ParseText(actor.GetTokenizedDisplayName())} to tile {PositionToPoint(actor.Position)} to prevent overlap with {string.Join(", ", occupiedTiles[originalPos].Select(npc => TokenParser.ParseText(npc.GetTokenizedDisplayName())))}.";
