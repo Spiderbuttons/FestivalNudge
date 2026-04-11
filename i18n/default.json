@@ -18,4 +18,7 @@
   
   "Config.ResetAllNudgesKey_Name": "Reset All Modifier",
   "Config.ResetAllNudgesKey_Description": "When held while pressing the Reset Nudges keybind, it will reset ALL NPCs back to their original positions, even if they were not manually moved by you.",
+  
+  "Config.PerSaveNudges_Name": "Per-Save Nudges",
+  "Config.PerSaveNudges_Description": "If enabled, manually nudged NPCs will only remember their nudges for the save file you moved them in. If disabled, manual nudges will be saved and loaded from the mod folder and will be used for all save files."
 }

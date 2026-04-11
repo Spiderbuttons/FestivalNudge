@@ -13,6 +13,8 @@ public sealed class ModConfig
 
     public KeybindList ResetNudgeKey { get; set; } = new(SButton.None);
     public KeybindList ResetAllNudgesKey { get; set; }  = new(SButton.None);
+    
+    public bool PerSaveNudges { get; set; }
 
     public ModConfig()
     {
@@ -23,6 +25,11 @@ public sealed class ModConfig
     {
         NotifyMovements = true;
         SkipWalkingNpcs = true;
+        MoveNpcKey = new KeybindList(SButton.LeftControl);
+        PrecisionModKey = new KeybindList(SButton.LeftShift);
+        ResetNudgeKey = new KeybindList(SButton.None);
+        ResetAllNudgesKey = new KeybindList(SButton.None);
+        PerSaveNudges = true;
     }
 
     public void SetupConfig(IGenericModConfigMenuApi configMenu, IManifest ModManifest, IModHelper Helper)
@@ -80,5 +87,16 @@ public sealed class ModConfig
             getValue: () => ResetAllNudgesKey,
             setValue: value => ResetAllNudgesKey = value
         );
+        
+        configMenu.AddBoolOption(
+            mod: ModManifest,
+            name: i18n.Config_PerSaveNudgesName,
+            tooltip: i18n.Config_PerSaveNudgesDescription,
+            getValue: () => PerSaveNudges,
+            setValue: value =>
+            {
+                PerSaveNudges = value;
+                FestivalManager.ReloadNudges();
+            });
     }
 }

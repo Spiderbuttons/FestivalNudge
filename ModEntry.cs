@@ -58,7 +58,7 @@ namespace FestivalNudge
 
         private void OnSaveLoaded(object? sender, SaveLoadedEventArgs e)
         {
-            FestivalManager.SavedNudges = Helper.Data.ReadSaveData<Dictionary<string, FestivalManager.SerializableNudge>>("manual-nudges") ?? new Dictionary<string, FestivalManager.SerializableNudge>();
+            FestivalManager.ReloadNudges();
         }
 
         private void OnAssetRequested(object? sender, AssetRequestedEventArgs e)
@@ -227,6 +227,33 @@ namespace FestivalNudge
             NudgedNpcs = null;
             alreadyManagedFestival = false;
             ManuallyNudgedNpc = null;
+            AutomaticNudges = null;
+        }
+
+        public static void ReloadNudges()
+        {
+            if (Game1.CurrentEvent?.isFestival ?? false)
+            {
+                ResetAllNudgesInCurrentFestival(saveNudges: false);
+                ResetFestivalManagement();
+            }
+            
+            if (ModEntry.Config.PerSaveNudges)
+            {
+                SavedNudges = ModEntry.ModHelper.Data.ReadSaveData<Dictionary<string, SerializableNudge>>("manual-nudges") ?? new Dictionary<string, SerializableNudge>();
+            }
+            else
+            {
+                SavedNudges = ModEntry.ModHelper.Data.ReadJsonFile<Dictionary<string, SerializableNudge>>("manual-nudges.json") ?? new Dictionary<string, SerializableNudge>();
+            }
+            
+            if (Game1.CurrentEvent?.isFestival ?? false) FixOverlaps(Game1.CurrentEvent);
+        }
+
+        public static void SaveNudges()
+        {
+            if (ModEntry.Config.PerSaveNudges) ModEntry.ModHelper.Data.WriteSaveData("manual-nudges", SavedNudges);
+            else ModEntry.ModHelper.Data.WriteJsonFile("manual-nudges.json", SavedNudges);
         }
 
         public static string GetNudgeKeyForNpc(string npc, string festivalId, int year)
@@ -247,10 +274,10 @@ namespace FestivalNudge
             int startFacing = SavedNudges!.GetValueOrDefault(nudgeKey)?.StartFacing ?? nudge.StartFacingDir;
             SerializableNudge savedNudge = new SerializableNudge(startPos, nudge.NewPos, startFacing, nudge.NewFacingDir, nudge.isPrecise);
             SavedNudges![nudgeKey] = savedNudge;
-            ModEntry.ModHelper.Data.WriteSaveData("manual-nudges", SavedNudges);
+            SaveNudges();
         }
 
-        public static void ResetNudge(NPC npc, string festivalId, bool isManual = true)
+        public static void ResetNudge(NPC npc, string festivalId, bool isManual = true, bool saveNudges = true)
         {
             Dictionary<string, SerializableNudge>? nudgeDict = isManual ? SavedNudges : AutomaticNudges;
             
@@ -261,17 +288,17 @@ namespace FestivalNudge
             npc.faceDirection(nudge.StartFacing);
             nudgeDict.Remove(nudgeKey);
             
-            if (isManual) ModEntry.ModHelper.Data.WriteSaveData("manual-nudges", SavedNudges);
+            if (isManual && saveNudges) SaveNudges();
         }
 
-        public static void ResetAllNudgesInCurrentFestival(bool includeAutomaticNudges = false)
+        public static void ResetAllNudgesInCurrentFestival(bool includeAutomaticNudges = false, bool saveNudges = true)
         {
             if (Game1.CurrentEvent is not { isFestival: true }) return;
             
             foreach (var actor in Game1.CurrentEvent.actors)
             {
-                ResetNudge(actor, FestivalId, isManual: true);
-                if (includeAutomaticNudges) ResetNudge(actor, FestivalId, isManual: false);
+                ResetNudge(actor, FestivalId, isManual: true, saveNudges);
+                if (includeAutomaticNudges) ResetNudge(actor, FestivalId, isManual: false, saveNudges);
             }
         }
 
