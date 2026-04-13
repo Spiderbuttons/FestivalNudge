@@ -312,7 +312,7 @@ namespace FestivalNudge
                            Game1.currentLocation.isCharacterAtTile(e.Cursor.Tile + new Vector2(0, 1));
                 if (ManuallyNudgedNpc is null && npc is not null)
                 {
-                    if (Game1.CurrentEvent.npcControllers.All(c => c.puppet != npc))
+                    if (Game1.CurrentEvent.npcControllers is null || Game1.CurrentEvent.npcControllers.All(c => c.puppet != npc))
                     {
                         ManuallyNudgedNpc = new ManualNudge(npc, npc.Position, npc.FacingDirection);
                         Game1.playSound("button_tap");
