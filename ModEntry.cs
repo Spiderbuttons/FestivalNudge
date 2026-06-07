@@ -238,7 +238,7 @@ namespace FestivalNudge
                 ResetFestivalManagement();
             }
             
-            if (ModEntry.Config.PerSaveNudges)
+            if (ModEntry.Config.PerSaveNudges && Context.IsWorldReady)
             {
                 SavedNudges = ModEntry.ModHelper.Data.ReadSaveData<Dictionary<string, SerializableNudge>>("manual-nudges") ?? new Dictionary<string, SerializableNudge>();
             }
