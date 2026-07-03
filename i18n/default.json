@@ -1,5 +1,5 @@
 ﻿{
-  "Error.CannotMove": "Cannot move NPCs that are already moving!",
+  "Error.CannotMove": "Cannot move NPCs that move on their own!",
   
   "Config.NotifyMovements_Name": "Log Movements",
   "Config.NotifyMovements_Description": "If enabled, any changes to an NPC's position will be logged to your SMAPI console so that you are aware of any position changes.",
