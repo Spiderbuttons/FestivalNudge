@@ -304,7 +304,7 @@ namespace FestivalNudge
 
         public static void OnButtonsChanged(object? sender, ButtonsChangedEventArgs e)
         {
-            if (Game1.CurrentEvent is not { isFestival: true }) return;
+            if (Game1.CurrentEvent is not { isFestival: true } || Game1.activeClickableMenu is not null) return;
             
             if (ModEntry.Config.MoveNpcKey.GetKeybindCurrentlyDown() is { } bind && bind.GetState() == SButtonState.Pressed)
             {
