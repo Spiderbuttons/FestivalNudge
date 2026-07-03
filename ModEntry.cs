@@ -48,6 +48,7 @@ namespace FestivalNudge
             Helper.Events.Input.MouseWheelScrolled += FestivalManager.OnMouseWheelScrolled;
             Helper.Events.GameLoop.UpdateTicked += FestivalManager.OnUpdateTicked;
             Helper.Events.Display.RenderedWorld += FestivalManager.OnRenderedWorld;
+            Helper.Events.Display.MenuChanged += FestivalManager.OnMenuChanged;
         }
 
         private void OnGameLaunched(object? sender, GameLaunchedEventArgs e)
@@ -356,6 +357,11 @@ namespace FestivalNudge
                 ManuallyNudgedNpc = null;
                 Game1.playSound("breathout");
             }
+        }
+
+        public static void OnMenuChanged(object? sender, MenuChangedEventArgs e)
+        {
+            if (e.NewMenu is not null) ManuallyNudgedNpc = null;
         }
 
         private static void SuppressNudgeKeybinds()
